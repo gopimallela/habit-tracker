@@ -192,7 +192,8 @@ export default function App() {
       } else {
         const act = { id: Date.now(), name: newName.trim(), score: newScore, icon: newIcon, type: newType };
         setActivities(prev => [...prev, act]);
-        await supabase.from("activities").insert(act);
+        const { error } = await supabase.from("activities").insert(act);
+        if (error) console.error("Insert failed:", error);
       }
     }
     resetForm(); setShowAddForm(false);
