@@ -202,7 +202,7 @@ export default function App() {
       const v = typeof log[a.id] === "number" ? log[a.id] : (log[a.id] ? 1 : 0);
       return s + v * a.score;
     }, 0);
-  }, 0) + tasks.filter(t => t.done).reduce((s, t) => s + t.score, 0);
+  }, 0) + tasks.filter(t => t.done).reduce((s, t) => s + t.score, 0) + stepsScore;
   const netScore = totalEverScore - claimed;
   const canClaim = netScore >= rewardThreshold;
 
@@ -517,13 +517,8 @@ export default function App() {
                   <div style={{ fontWeight: 700, fontSize: 14 }}>{a.name}</div>
                   <div style={{ fontSize: 12, color: "#64748b" }}>{a.daysActive}/{statsDayCount} days · {a.totalCount}× · {a.totalPts} pts</div>
                 </div>
-                <div style={{ textAlign: "right" }}>
-                  <div style={{ fontSize: 18, fontWeight: 800, color: a.completionRate >= 80 ? "#22c55e" : a.completionRate >= 50 ? "#eab308" : "#64748b" }}>{a.completionRate}%</div>
-                  <div style={{ fontSize: 10, color: "#475569" }}>done</div>
-                </div>
               </div>
-              {[["Points earned", a.totalPts, maxActivityPts, "linear-gradient(90deg,#6366f1,#a855f7)", `${a.totalPts} pts`],
-                ["Completion", a.completionRate, 100, a.completionRate >= 80 ? "#22c55e" : a.completionRate >= 50 ? "#eab308" : "#f97316", `${a.completionRate}%`]
+              {[["Points earned", a.totalPts, maxActivityPts, "linear-gradient(90deg,#6366f1,#a855f7)", `${a.totalPts} pts`]
               ].map(([label, val, max, bg, display]) => (
                 <div key={label} style={{ marginBottom: 6 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#475569", marginBottom: 3 }}><span>{label}</span><span>{display}</span></div>
