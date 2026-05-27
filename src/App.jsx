@@ -1,14 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { createClient } from "@supabase/supabase-js";
 
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY
-);
-
 const GFIT_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 const GFIT_SCOPE = "https://www.googleapis.com/auth/fitness.activity.read";
-const GFIT_REDIRECT = window.location.origin;
 
 function getGoogleToken() { return localStorage.getItem("gfit_token"); }
 function setGoogleToken(t) { localStorage.setItem("gfit_token", t); }
@@ -33,6 +27,11 @@ async function fetchStepsToday(token) {
   data.bucket?.forEach(b => b.dataset?.forEach(ds => ds.point?.forEach(p => p.value?.forEach(v => { steps += v.intVal || 0; }))));
   return steps;
 }
+
+const supabase = createClient(
+  import.meta.env.VITE_SUPABASE_URL,
+  import.meta.env.VITE_SUPABASE_ANON_KEY
+);
 
 const DEFAULT_ACTIVITIES = [
   { id: 1, name: "Workout", score: 3, icon: "🏋️", type: "toggle" },
@@ -263,7 +262,7 @@ export default function App() {
   const loginGoogle = () => {
     const params = new URLSearchParams({
       client_id: GFIT_CLIENT_ID,
-      redirect_uri: GFIT_REDIRECT,
+      redirect_uri: window.location.origin,
       response_type: "token",
       scope: GFIT_SCOPE,
     });
