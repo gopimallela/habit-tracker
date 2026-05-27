@@ -6,6 +6,34 @@ const supabase = createClient(
   import.meta.env.VITE_SUPABASE_ANON_KEY
 );
 
+const GFIT_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+const GFIT_SCOPE = "https://www.googleapis.com/auth/fitness.activity.read";
+const GFIT_REDIRECT = window.location.origin;
+
+function getGoogleToken() { return localStorage.getItem("gfit_token"); }
+function setGoogleToken(t) { localStorage.setItem("gfit_token", t); }
+
+async function fetchStepsToday(token) {
+  const now = Date.now();
+  const startOfDay = new Date(); startOfDay.setHours(0,0,0,0);
+  const body = {
+    aggregateBy: [{ dataTypeName: "com.google.step_count.delta" }],
+    bucketByTime: { durationMillis: 86400000 },
+    startTimeMillis: startOfDay.getTime(),
+    endTimeMillis: now,
+  };
+  const res = await fetch("https://www.googleapis.com/fitness/v1/users/me/dataset:aggregate", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) return null;
+  const data = await res.json();
+  let steps = 0;
+  data.bucket?.forEach(b => b.dataset?.forEach(ds => ds.point?.forEach(p => p.value?.forEach(v => { steps += v.intVal || 0; }))));
+  return steps;
+}
+
 const DEFAULT_ACTIVITIES = [
   { id: 1, name: "Workout", score: 3, icon: "🏋️", type: "toggle" },
   { id: 2, name: "Run", score: 3, icon: "🏃", type: "toggle" },
@@ -36,6 +64,9 @@ function getMotivation(score, max) {
 
 export default function App() {
   const [loading, setLoading] = useState(true);
+  const [gToken, setGToken] = useState(() => getGoogleToken() || null);
+  const [steps, setSteps] = useState(0);
+  const [stepsLoading, setStepsLoading] = useState(false);
   const [tab, setTab] = useState("today");
   const [statsPeriod, setStatsPeriod] = useState("week"); // "week" | "month"
   const [activities, setActivities] = useState([]);
@@ -131,7 +162,7 @@ export default function App() {
   const todayActivityScore = activities.reduce((s, a) => {
     const v = getLogValue(todayLog, a);
     return s + (a.type === "counter" ? v * a.score : v ? a.score : 0);
-  }, 0);
+  }, 0) + stepsScore;
   const pendingTasks = tasks.filter(t => !t.done);
   const todayDoneTasks = tasks.filter(t => t.done && t.done_at === todayKey);
   const todayTaskScore = todayDoneTasks.reduce((s, t) => s + t.score, 0);
@@ -206,7 +237,40 @@ export default function App() {
 
   const startEdit = (a) => { setEditingId(a.id); setNewName(a.name); setNewScore(a.score); setNewIcon(a.icon); setNewType(a.type || "toggle"); setFormMode("activity"); setShowAddForm(true); };
 
-  // ── Stats computation ──
+  // ── Google Fit OAuth ──
+  useEffect(() => {
+    // Handle redirect back from Google with token
+    const hash = window.location.hash;
+    if (hash.includes("access_token")) {
+      const params = new URLSearchParams(hash.replace("#", "?"));
+      const token = params.get("access_token");
+      if (token) { setGoogleToken(token); setGToken(token); window.location.hash = ""; }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (gToken) loadSteps(gToken);
+  }, [gToken]);
+
+  const loadSteps = async (token) => {
+    setStepsLoading(true);
+    const s = await fetchStepsToday(token);
+    if (s === null) { setGoogleToken(""); setGToken(null); } // token expired
+    else setSteps(s);
+    setStepsLoading(false);
+  };
+
+  const loginGoogle = () => {
+    const params = new URLSearchParams({
+      client_id: GFIT_CLIENT_ID,
+      redirect_uri: GFIT_REDIRECT,
+      response_type: "token",
+      scope: GFIT_SCOPE,
+    });
+    window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
+  };
+
+  const stepsScore = Math.floor(steps / 1000);
   const getStatsDays = () => {
     const days = statsPeriod === "week" ? 7 : 30;
     return Array.from({ length: days }, (_, i) => {
@@ -322,6 +386,41 @@ export default function App() {
             </div>
 
             <div style={s.sectionTitle}>Daily Activities</div>
+
+            {/* Steps card */}
+            <div style={{ background: gToken ? (stepsScore > 0 ? "linear-gradient(135deg, #1d2f4a, #162040)" : "#1e293b") : "#1a1a2e", border: gToken ? (stepsScore > 0 ? "1.5px solid #6366f1" : "1.5px solid #2d3748") : "1.5px solid #334155", borderRadius: 14, padding: "14px", marginBottom: 12 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <span style={{ fontSize: 28 }}>👟</span>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 700, fontSize: 14 }}>Steps Today</div>
+                  {gToken ? (
+                    stepsLoading
+                      ? <div style={{ fontSize: 12, color: "#64748b" }}>Fetching steps...</div>
+                      : <div style={{ fontSize: 12, color: "#64748b" }}>{steps.toLocaleString()} steps · 1 pt per 1,000</div>
+                  ) : (
+                    <div style={{ fontSize: 12, color: "#64748b" }}>Connect Google Fit to track steps</div>
+                  )}
+                </div>
+                {gToken ? (
+                  <div style={{ textAlign: "right" }}>
+                    <div style={{ fontSize: 24, fontWeight: 800, color: "#818cf8" }}>{stepsScore}</div>
+                    <div style={{ fontSize: 10, color: "#64748b" }}>pts</div>
+                  </div>
+                ) : (
+                  <button onClick={loginGoogle} style={{ padding: "7px 14px", borderRadius: 10, border: "none", cursor: "pointer", fontWeight: 700, fontSize: 12, background: "#4285f4", color: "#fff" }}>
+                    Connect
+                  </button>
+                )}
+              </div>
+              {gToken && steps > 0 && (
+                <div style={{ marginTop: 10 }}>
+                  <div style={{ height: 5, background: "#0f172a", borderRadius: 99, overflow: "hidden" }}>
+                    <div style={{ height: "100%", borderRadius: 99, background: "linear-gradient(90deg, #6366f1, #a855f7)", width: `${Math.min((steps / 10000) * 100, 100)}%`, transition: "width .5s" }} />
+                  </div>
+                  <div style={{ fontSize: 10, color: "#475569", marginTop: 3, textAlign: "right" }}>{Math.min(Math.round((steps/10000)*100),100)}% of 10k goal</div>
+                </div>
+              )}
+            </div>
             <div style={s.grid}>
               {activities.map(a => {
                 if (a.type === "counter") {
