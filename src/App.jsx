@@ -37,6 +37,7 @@ function getMotivation(score, max) {
 export default function App() {
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState("today");
+  const [statsPeriod, setStatsPeriod] = useState("week"); // "week" | "month"
   const [activities, setActivities] = useState([]);
   const [logs, setLogs] = useState({});
   const [tasks, setTasks] = useState([]);
@@ -192,8 +193,7 @@ export default function App() {
       } else {
         const act = { id: Date.now(), name: newName.trim(), score: newScore, icon: newIcon, type: newType };
         setActivities(prev => [...prev, act]);
-        const { error } = await supabase.from("activities").insert(act);
-        if (error) console.error("Insert failed:", error);
+        await supabase.from("activities").insert(act);
       }
     }
     resetForm(); setShowAddForm(false);
@@ -206,7 +206,39 @@ export default function App() {
 
   const startEdit = (a) => { setEditingId(a.id); setNewName(a.name); setNewScore(a.score); setNewIcon(a.icon); setNewType(a.type || "toggle"); setFormMode("activity"); setShowAddForm(true); };
 
-  // ── History ──
+  // ── Stats computation ──
+  const getStatsDays = () => {
+    const days = statsPeriod === "week" ? 7 : 30;
+    return Array.from({ length: days }, (_, i) => {
+      const d = new Date(); d.setDate(d.getDate() - (days - 1 - i));
+      return toKey(d);
+    });
+  };
+
+  const statsDays = getStatsDays();
+  const statsDayCount = statsDays.length;
+
+  const activityStats = activities.map(a => {
+    let totalCount = 0, totalPts = 0, daysActive = 0;
+    statsDays.forEach(dk => {
+      const log = logs[dk] || {};
+      const v = typeof log[a.id] === "number" ? log[a.id] : (log[a.id] ? 1 : 0);
+      if (v > 0) { daysActive++; totalCount += v; totalPts += v * a.score; }
+    });
+    return { ...a, totalCount, totalPts, daysActive, completionRate: Math.round((daysActive / statsDayCount) * 100) };
+  }).sort((a, b) => b.totalPts - a.totalPts);
+
+  const dailyScores = statsDays.map(dk => {
+    const log = logs[dk] || {};
+    const score = activities.reduce((s, a) => {
+      const v = typeof log[a.id] === "number" ? log[a.id] : (log[a.id] ? 1 : 0);
+      return s + v * a.score;
+    }, 0) + tasks.filter(t => t.done && t.done_at === dk).reduce((s, t) => s + t.score, 0);
+    return { date: dk, score, label: new Date(dk + "T00:00:00").toLocaleDateString("en-IN", statsPeriod === "week" ? { weekday: "short" } : { day: "numeric", month: "short" }) };
+  });
+
+  const maxDailyScore = Math.max(...dailyScores.map(d => d.score), 1);
+  const maxActivityPts = Math.max(...activityStats.map(a => a.totalPts), 1);
   const histLog = logs[historyDate] || {};
   const histActivityScore = activities.reduce((s, a) => {
     const v = getLogValue(histLog, a);
@@ -274,7 +306,7 @@ export default function App() {
       </div>
 
       <div style={s.tabs}>
-        {[["today","Today"],["history","History"],["manage","Activities"]].map(([k,l]) => (
+        {[["today","Today"],["history","History"],["stats","Stats"],["manage","Activities"]].map(([k,l]) => (
           <button key={k} style={s.tabBtn(tab===k)} onClick={() => setTab(k)}>{l}</button>
         ))}
       </div>
@@ -342,6 +374,117 @@ export default function App() {
                 ✓ {todayDoneTasks.length} task{todayDoneTasks.length > 1 ? "s" : ""} completed today (+{todayTaskScore} pts)
               </div>
             )}
+          </>
+        )}
+
+        {tab === "stats" && (
+          <>
+            {/* Period toggle */}
+            <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
+              {["week","month"].map(p => (
+                <button key={p} onClick={() => setStatsPeriod(p)}
+                  style={{ flex: 1, padding: "9px", borderRadius: 10, border: "none", cursor: "pointer", fontWeight: 700, fontSize: 14, background: statsPeriod === p ? "#6366f1" : "#1e293b", color: statsPeriod === p ? "#fff" : "#64748b", transition: "all .2s" }}>
+                  {p === "week" ? "This Week" : "This Month"}
+                </button>
+              ))}
+            </div>
+
+            {/* Daily score bar chart */}
+            <div style={{ background: "#1e293b", borderRadius: 16, padding: "16px", marginBottom: 16, border: "1px solid #2d3748" }}>
+              <div style={s.sectionTitle}>📈 Daily Score — Last {statsPeriod === "week" ? "7" : "30"} Days</div>
+              <div style={{ display: "flex", alignItems: "flex-end", gap: statsPeriod === "week" ? 8 : 3, height: 100, marginBottom: 6 }}>
+                {dailyScores.map((d, i) => (
+                  <div key={d.date} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", height: "100%", justifyContent: "flex-end", gap: 3 }}>
+                    <div style={{ fontSize: 9, color: "#64748b", fontWeight: 600 }}>{d.score > 0 ? d.score : ""}</div>
+                    <div style={{
+                      width: "100%", borderRadius: 4,
+                      height: `${Math.max((d.score / maxDailyScore) * 80, d.score > 0 ? 4 : 2)}px`,
+                      background: d.date === todayKey
+                        ? "linear-gradient(180deg, #a855f7, #6366f1)"
+                        : d.score >= maxScore * 0.8 ? "#22c55e"
+                        : d.score >= maxScore * 0.5 ? "#6366f1"
+                        : d.score > 0 ? "#334155" : "#1e293b",
+                      transition: "height .4s"
+                    }} />
+                  </div>
+                ))}
+              </div>
+              <div style={{ display: "flex", gap: statsPeriod === "week" ? 8 : 3 }}>
+                {dailyScores.map(d => (
+                  <div key={d.date} style={{ flex: 1, textAlign: "center", fontSize: statsPeriod === "week" ? 10 : 8, color: d.date === todayKey ? "#818cf8" : "#475569", fontWeight: d.date === todayKey ? 700 : 400 }}>
+                    {d.label}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Heatmap */}
+            <div style={{ background: "#1e293b", borderRadius: 16, padding: "16px", marginBottom: 16, border: "1px solid #2d3748" }}>
+              <div style={s.sectionTitle}>🗓 Activity Heatmap</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                {statsDays.map(dk => {
+                  const log = logs[dk] || {};
+                  const score = activities.reduce((s, a) => {
+                    const v = typeof log[a.id] === "number" ? log[a.id] : (log[a.id] ? 1 : 0);
+                    return s + v * a.score;
+                  }, 0);
+                  const pct = score / maxScore;
+                  const bg = score === 0 ? "#0f172a" : pct < 0.3 ? "#1e3a5f" : pct < 0.6 ? "#2563eb" : pct < 0.9 ? "#6366f1" : "#a855f7";
+                  const label = new Date(dk + "T00:00:00").toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" });
+                  return (
+                    <div key={dk} title={`${label}: ${score} pts`} style={{
+                      width: statsPeriod === "week" ? 36 : 24, height: statsPeriod === "week" ? 36 : 24,
+                      borderRadius: 6, background: bg,
+                      border: dk === todayKey ? "2px solid #818cf8" : "2px solid transparent",
+                      cursor: "default", transition: "background .3s"
+                    }} />
+                  );
+                })}
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 10 }}>
+                <span style={{ fontSize: 11, color: "#475569" }}>Less</span>
+                {["#0f172a","#1e3a5f","#2563eb","#6366f1","#a855f7"].map(c => (
+                  <div key={c} style={{ width: 14, height: 14, borderRadius: 3, background: c }} />
+                ))}
+                <span style={{ fontSize: 11, color: "#475569" }}>More</span>
+              </div>
+            </div>
+
+            {/* Per-activity stats */}
+            <div style={s.sectionTitle}>🏅 Activity Breakdown</div>
+            {activityStats.map(a => (
+              <div key={a.id} style={{ background: "#1e293b", borderRadius: 14, padding: "14px", marginBottom: 10, border: "1px solid #2d3748" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                  <span style={{ fontSize: 22 }}>{a.icon}</span>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 700, fontSize: 14 }}>{a.name}</div>
+                    <div style={{ fontSize: 12, color: "#64748b" }}>{a.daysActive} of {statsDayCount} days · {a.totalCount} times · {a.totalPts} pts</div>
+                  </div>
+                  <div style={{ textAlign: "right" }}>
+                    <div style={{ fontSize: 18, fontWeight: 800, color: a.completionRate >= 80 ? "#22c55e" : a.completionRate >= 50 ? "#eab308" : "#64748b" }}>{a.completionRate}%</div>
+                    <div style={{ fontSize: 10, color: "#475569" }}>completion</div>
+                  </div>
+                </div>
+                {/* pts bar */}
+                <div style={{ marginBottom: 6 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#475569", marginBottom: 3 }}>
+                    <span>Points earned</span><span>{a.totalPts} pts</span>
+                  </div>
+                  <div style={{ height: 6, background: "#0f172a", borderRadius: 99, overflow: "hidden" }}>
+                    <div style={{ height: "100%", borderRadius: 99, background: "linear-gradient(90deg, #6366f1, #a855f7)", width: `${(a.totalPts / maxActivityPts) * 100}%`, transition: "width .5s" }} />
+                  </div>
+                </div>
+                {/* completion rate bar */}
+                <div>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#475569", marginBottom: 3 }}>
+                    <span>Completion rate</span><span>{a.completionRate}%</span>
+                  </div>
+                  <div style={{ height: 6, background: "#0f172a", borderRadius: 99, overflow: "hidden" }}>
+                    <div style={{ height: "100%", borderRadius: 99, background: a.completionRate >= 80 ? "#22c55e" : a.completionRate >= 50 ? "#eab308" : "#f97316", width: `${a.completionRate}%`, transition: "width .5s" }} />
+                  </div>
+                </div>
+              </div>
+            ))}
           </>
         )}
 
