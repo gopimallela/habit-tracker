@@ -456,7 +456,7 @@ export default function App() {
             <div style={{ fontSize: 48, fontWeight: 800, color: "#6366f1" }}>{histScore}</div>
             <div style={{ fontSize: 13, color: "#64748b" }}>pts · {histDoneActivities.length + histDoneTasks.length} activities</div>
           </div>
-          {histDoneActivities.length === 0 && histDoneTasks.length === 0
+          {histDoneActivities.length === 0 && histDoneTasks.length === 0 && steps === 0
             ? <div style={{ textAlign: "center", color: "#64748b", padding: 24 }}>😴 No activities logged</div>
             : <>
                 {histDoneActivities.map(a => { const v = getLogValue(histLog, a); return (
@@ -476,6 +476,16 @@ export default function App() {
                     </div>
                   ))}
                 </>}
+                {(() => { const savedSteps = histLog.__steps; return savedSteps > 0 ? (
+                  <>
+                    <div style={{ fontSize: 12, color: "#64748b", fontWeight: 700, textTransform: "uppercase", margin: "12px 0 8px" }}>👟 Steps</div>
+                    <div style={{ ...S.histCard, border: "1px solid #334155" }}>
+                      <span style={{ fontSize: 24 }}>👟</span>
+                      <div style={{ flex: 1 }}><div style={{ fontWeight: 600, fontSize: 14 }}>Steps</div><div style={{ fontSize: 12, color: "#64748b" }}>{savedSteps.toLocaleString()} steps</div></div>
+                      <div style={{ color: "#818cf8", fontWeight: 700 }}>+{Math.floor(savedSteps / 1000)}</div>
+                    </div>
+                  </>
+                ) : null; })()}
               </>}
         </>)}
 
@@ -523,26 +533,21 @@ export default function App() {
           </div>
 
           <div style={S.sectionTitle}>🏅 Activity Breakdown</div>
-          {activityStats.map(a => (
-            <div key={a.id} style={{ ...S.statBox, marginBottom: 10 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-                <span style={{ fontSize: 22 }}>{a.icon}</span>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 700, fontSize: 14 }}>{a.name}</div>
-                  <div style={{ fontSize: 12, color: "#64748b" }}>{a.daysActive}/{statsDayCount} days · {a.totalCount}× · {a.totalPts} pts</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            {activityStats.map(a => (
+              <div key={a.id} style={{ background: "#1e293b", borderRadius: 14, padding: "14px 12px", border: "1px solid #2d3748" }}>
+                <div style={{ fontSize: 26, marginBottom: 6 }}>{a.icon}</div>
+                <div style={{ fontWeight: 700, fontSize: 13, lineHeight: 1.3, marginBottom: 8 }}>{a.name}</div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
+                  <div>
+                    <div style={{ fontSize: 24, fontWeight: 800, color: "#818cf8", lineHeight: 1 }}>{a.totalCount}</div>
+                    <div style={{ fontSize: 11, color: "#475569", marginTop: 2 }}>times · {a.daysActive}/{statsDayCount} days</div>
+                  </div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "#6366f1" }}>{a.totalPts} pts</div>
                 </div>
               </div>
-              {[["Points earned", a.totalPts, maxActivityPts, "linear-gradient(90deg,#6366f1,#a855f7)", `${a.totalPts} pts`]
-              ].map(([label, val, max, bg, display]) => (
-                <div key={label} style={{ marginBottom: 6 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#475569", marginBottom: 3 }}><span>{label}</span><span>{display}</span></div>
-                  <div style={{ height: 6, background: "#0f172a", borderRadius: 99, overflow: "hidden" }}>
-                    <div style={{ height: "100%", borderRadius: 99, background: bg, width: `${(val / max) * 100}%`, transition: "width .5s" }} />
-                  </div>
-                </div>
-              ))}
-            </div>
-          ))}
+            ))}
+          </div>
         </>)}
 
         {/* ── MANAGE ── */}
