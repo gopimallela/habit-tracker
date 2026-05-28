@@ -55,7 +55,11 @@ const DEFAULT_ACTIVITIES = [
 const ICONS = ["🏋️","🏃","🍳","📖","💊","🥜","🌱","💻","👕","🧹","🫧","🎯","🧘","🚴","🎸","✍️","🛁","🌿","🍎","💤","🛒","📦","🏥","📝","🔧","🚗","📞","💈","🎁","🏦"];
 
 // ── Helpers ────────────────────────────────────────────────
-const toKey = d => d.toISOString().split("T")[0];
+// IST = UTC+5:30
+const toKey = d => {
+  const ist = new Date(d.getTime() + (5.5 * 60 * 60 * 1000));
+  return ist.toISOString().split("T")[0];
+};
 const todayKey = toKey(new Date());
 
 function getMotivation(score, max) {
@@ -118,9 +122,17 @@ export default function App() {
   useEffect(() => {
     if (gToken) {
       setStepsLoading(true);
-      gFetchSteps(gToken).then(s => {
+      gFetchSteps(gToken).then(async s => {
         if (s === null) { gSetToken(""); setGToken(""); }
-        else setSteps(s);
+        else {
+          setSteps(s);
+          // persist steps score into today's log so cumulative is accurate
+          setLogs(prev => {
+            const log = { ...(prev[todayKey] || {}), __steps: s };
+            supabase.from("logs").upsert({ date: todayKey, data: log });
+            return { ...prev, [todayKey]: log };
+          });
+        }
         setStepsLoading(false);
       });
     }
@@ -197,12 +209,14 @@ export default function App() {
   const todayScore = todayActivityScore + todayTaskScore;
   const { msg, color } = getMotivation(todayScore, maxScore);
 
-  const totalEverScore = Object.values(logs).reduce((tot, log) => {
-    return tot + activities.reduce((s, a) => {
+  const totalEverScore = Object.entries(logs).reduce((tot, [dk, log]) => {
+    const actScore = activities.reduce((s, a) => {
       const v = typeof log[a.id] === "number" ? log[a.id] : (log[a.id] ? 1 : 0);
       return s + v * a.score;
     }, 0);
-  }, 0) + tasks.filter(t => t.done).reduce((s, t) => s + t.score, 0) + stepsScore;
+    const savedSteps = dk === todayKey ? stepsScore : Math.floor((log.__steps || 0) / 1000);
+    return tot + actScore + savedSteps;
+  }, 0) + tasks.filter(t => t.done).reduce((s, t) => s + t.score, 0);
   const netScore = totalEverScore - claimed;
   const canClaim = netScore >= rewardThreshold;
 
