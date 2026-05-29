@@ -214,9 +214,10 @@ export default function App() {
       const v = typeof log[a.id] === "number" ? log[a.id] : (log[a.id] ? 1 : 0);
       return s + v * a.score;
     }, 0);
-    const savedSteps = dk === todayKey ? stepsScore : Math.floor((log.__steps || 0) / 1000);
-    return tot + actScore + savedSteps;
-  }, 0) + tasks.filter(t => t.done).reduce((s, t) => s + t.score, 0);
+    // for today use live stepsScore, for past days read persisted __steps
+    const stepPts = dk === todayKey ? 0 : Math.floor((log.__steps || 0) / 1000);
+    return tot + actScore + stepPts;
+  }, 0) + stepsScore + tasks.filter(t => t.done).reduce((s, t) => s + t.score, 0);
   const netScore = totalEverScore - claimed;
   const canClaim = netScore >= rewardThreshold;
 
