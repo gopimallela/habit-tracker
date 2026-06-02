@@ -500,30 +500,22 @@ export default function App() {
             ))}
           </div>
 
+          {/* Heatmap only */}
           <div style={S.statBox}>
-            <div style={S.sectionTitle}>📈 Daily Score — Last {statsPeriod === "week" ? "7" : "30"} Days</div>
-            <div style={{ display: "flex", alignItems: "flex-end", gap: statsPeriod === "week" ? 8 : 3, height: 100, marginBottom: 6 }}>
-              {dailyScores.map(d => (
-                <div key={d.date} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", height: "100%", justifyContent: "flex-end", gap: 3 }}>
-                  <div style={{ fontSize: 9, color: "#64748b" }}>{d.score > 0 ? d.score : ""}</div>
-                  <div style={{ width: "100%", borderRadius: 4, height: `${Math.max((d.score / maxDailyScore) * 80, d.score > 0 ? 4 : 2)}px`, background: d.date === todayKey ? "linear-gradient(180deg,#a855f7,#6366f1)" : d.score >= maxScore * 0.8 ? "#22c55e" : d.score >= maxScore * 0.5 ? "#6366f1" : d.score > 0 ? "#334155" : "#1e293b", transition: "height .4s" }} />
-                </div>
-              ))}
-            </div>
-            <div style={{ display: "flex", gap: statsPeriod === "week" ? 8 : 3 }}>
-              {dailyScores.map(d => <div key={d.date} style={{ flex: 1, textAlign: "center", fontSize: statsPeriod === "week" ? 10 : 8, color: d.date === todayKey ? "#818cf8" : "#475569", fontWeight: d.date === todayKey ? 700 : 400 }}>{d.label}</div>)}
-            </div>
-          </div>
-
-          <div style={S.statBox}>
-            <div style={S.sectionTitle}>🗓 Activity Heatmap</div>
+            <div style={S.sectionTitle}>🗓 {statsPeriod === "week" ? "Weekly" : "Monthly"} Heatmap</div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
               {statsDays.map(dk => {
                 const log = logs[dk] || {};
                 const score = activities.reduce((s, a) => { const v = typeof log[a.id] === "number" ? log[a.id] : (log[a.id] ? 1 : 0); return s + v * a.score; }, 0);
                 const pct = score / maxScore;
                 const bg = score === 0 ? "#0f172a" : pct < 0.3 ? "#1e3a5f" : pct < 0.6 ? "#2563eb" : pct < 0.9 ? "#6366f1" : "#a855f7";
-                return <div key={dk} title={`${dk}: ${score} pts`} style={{ width: statsPeriod === "week" ? 36 : 22, height: statsPeriod === "week" ? 36 : 22, borderRadius: 6, background: bg, border: dk === todayKey ? "2px solid #818cf8" : "2px solid transparent" }} />;
+                const label = new Date(dk + "T00:00:00").toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" });
+                return (
+                  <div key={dk} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
+                    <div title={`${label}: ${score} pts`} style={{ width: statsPeriod === "week" ? 36 : 22, height: statsPeriod === "week" ? 36 : 22, borderRadius: 6, background: bg, border: dk === todayKey ? "2px solid #818cf8" : "2px solid transparent" }} />
+                    {statsPeriod === "week" && <div style={{ fontSize: 9, color: dk === todayKey ? "#818cf8" : "#475569" }}>{new Date(dk + "T00:00:00").toLocaleDateString("en-IN", { weekday: "short" })}</div>}
+                  </div>
+                );
               })}
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 10 }}>
@@ -533,22 +525,53 @@ export default function App() {
             </div>
           </div>
 
+          {/* Activity breakdown with per-day heatmap */}
           <div style={S.sectionTitle}>🏅 Activity Breakdown</div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            {activityStats.map(a => (
-              <div key={a.id} style={{ background: "#1e293b", borderRadius: 14, padding: "14px 12px", border: "1px solid #2d3748" }}>
-                <div style={{ fontSize: 26, marginBottom: 6 }}>{a.icon}</div>
-                <div style={{ fontWeight: 700, fontSize: 13, lineHeight: 1.3, marginBottom: 8 }}>{a.name}</div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
-                  <div>
-                    <div style={{ fontSize: 24, fontWeight: 800, color: "#818cf8", lineHeight: 1 }}>{a.totalCount}</div>
-                    <div style={{ fontSize: 11, color: "#475569", marginTop: 2 }}>times · {a.daysActive}/{statsDayCount} days</div>
+          {[...activityStats, { id: "__steps", name: "Steps", icon: "👟", type: "steps", totalPts: statsDays.reduce((s, dk) => { const log = logs[dk] || {}; return s + (dk === todayKey ? stepsScore : Math.floor((log.__steps || 0) / 1000)); }, 0) }].map(a => {
+            const dayData = statsDays.map(dk => {
+              const log = logs[dk] || {};
+              if (a.type === "steps") {
+                const raw = dk === todayKey ? steps : (log.__steps || 0);
+                return { dk, val: raw, display: raw >= 1000 ? `${(raw/1000).toFixed(1)}k` : raw > 0 ? String(raw) : "" };
+              }
+              const v = typeof log[a.id] === "number" ? log[a.id] : (log[a.id] ? 1 : 0);
+              return { dk, val: v, display: v > 0 ? String(v) : "" };
+            });
+            const maxVal = Math.max(...dayData.map(d => d.val), 1);
+            const totalCount = a.type === "steps"
+              ? `${statsDays.reduce((s, dk) => { const log = logs[dk] || {}; return s + (dk === todayKey ? steps : (log.__steps || 0)); }, 0).toLocaleString()} steps`
+              : `${a.totalCount}× · ${a.daysActive}/${statsDayCount} days`;
+
+            return (
+              <div key={a.id} style={{ ...S.statBox, marginBottom: 10 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+                  <span style={{ fontSize: 22 }}>{a.icon}</span>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 700, fontSize: 14 }}>{a.name}</div>
+                    <div style={{ fontSize: 12, color: "#64748b" }}>{totalCount}</div>
                   </div>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: "#6366f1" }}>{a.totalPts} pts</div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "#6366f1" }}>{a.totalPts ?? a.totalPts} pts</div>
+                </div>
+                {/* per-day heatmap */}
+                <div style={{ display: "flex", gap: statsPeriod === "week" ? 6 : 3 }}>
+                  {dayData.map(({ dk, val, display }) => {
+                    const pct = val / maxVal;
+                    const bg = val === 0 ? "#0f172a" : pct < 0.34 ? "#1e3a5f" : pct < 0.67 ? "#4f46e5" : "#a855f7";
+                    return (
+                      <div key={dk} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
+                        <div style={{ width: "100%", aspectRatio: "1", borderRadius: 6, background: bg, border: dk === todayKey ? "2px solid #818cf8" : "2px solid transparent", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                          {val > 0 && <span style={{ fontSize: statsPeriod === "week" ? 11 : 8, fontWeight: 700, color: "#e2e8f0" }}>{display}</span>}
+                        </div>
+                        <div style={{ fontSize: statsPeriod === "week" ? 9 : 7, color: dk === todayKey ? "#818cf8" : "#475569", textAlign: "center" }}>
+                          {new Date(dk + "T00:00:00").toLocaleDateString("en-IN", statsPeriod === "week" ? { weekday: "short" } : { day: "numeric" })}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
-            ))}
-          </div>
+            );
+          })}
         </>)}
 
         {/* ── MANAGE ── */}
